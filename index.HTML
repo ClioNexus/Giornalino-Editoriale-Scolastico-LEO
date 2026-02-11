@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nuova Rivista Scolastica</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Playfair+Display:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+
+    <script src="jquery.min.js"></script>
+    <script src="turn.min.js"></script>
+
+    <style>
+        body { 
+            background-color: #1a1a1a; 
+            margin: 0; height: 100vh; width: 100vw;
+            display: flex; justify-content: center; align-items: center; 
+            overflow: hidden; font-family: 'Montserrat', sans-serif; 
+        }
+
+        /* Motore di Zoom */
+        #zoom-wrapper {
+            width: 960px; height: 680px;
+            display: flex; justify-content: center; align-items: center;
+            transition: transform 0.1s linear; 
+        }
+
+        #flipbook { 
+            width: 960px; height: 680px; 
+            opacity: 0; transition: opacity 1.5s ease-in-out;
+            visibility: visible; 
+        }
+
+        #flipbook.visible { opacity: 1; }
+
+        .page { background-color: white; position: relative; }
+
+        .page-bg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-repeat: no-repeat; background-position: center;
+            background-size: 100% 100%; z-index: 1; 
+        }
+
+        /* UI Elementi Dinamici */
+        .chapter-badge {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            padding: 6px 16px; border-radius: 20px; font-size: 10px; 
+            font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: 1px;
+            text-transform: uppercase; z-index: 55; backdrop-filter: blur(5px);
+            white-space: nowrap; transition: all 0.3s ease;
+        }
+
+        .page-number {
+            position: absolute; bottom: 15px; font-size: 14px; font-weight: 700; 
+            color: #333; z-index: 60; background-color: rgba(255, 255, 255, 0.8);
+            padding: 2px 8px; border-radius: 4px;
+        }
+
+        .typewriter-box {
+            position: absolute; z-index: 100; font-family: 'Montserrat', sans-serif; 
+            line-height: 1.5; white-space: pre-wrap; pointer-events: none;  
+        }
+
+        .hotspot { position: absolute; z-index: 30; cursor: pointer; background: transparent; }
+
+        /* Contenitore Video/Form (Precedenti ottimizzazioni) */
+        .video-container { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: black; z-index: 5;
+        }
+        .iframe-full { width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+
+    <div id="zoom-wrapper">
+        <div id="flipbook"></div>
+    </div>
+
+    <script>
+        // --- 1. CONFIGURAZIONE GENERALE ---
+        const totPagine = 10; // Modifica in base al numero di PNG che hai
+
+        // --- 2. DEFINIZIONE CAPITOLI ---
+        // I colori verranno applicati automaticamente ai badge
+        const chapters = [
+            { start: 1, end: 2, title: "COPERTINA", color: "#444444" },
+            { start: 3, end: 5, title: "ARTICOLO PRINCIPALE", color: "#3498db" },
+            { start: 6, end: 10, title: "RUBRICHE", color: "#27ae60" }
+        ];
+
+        // --- 3. TESTI INTERATTIVI (TYPEWRITER) ---
+        const texts = [
+            {
+                pageIndex: 1, 
+                content: "TITOLO NUOVO GIORNALINO",
+                speed: 40, top: 20, left: 10, width: 80,
+                color: '#ffffff', fontSize: '48px', fontWeight: '900', textAlign: 'center',
+                textShadow: '2px 2px 10px rgba(0,0,0,0.5)'
+            }
+        ];
+
+        // --- 4. LINK E INTERAZIONI ---
+        const links = [
+            // { pageIndex: 2, destPage: 5, top: 30, left: 15, width: 70, height: 10 }
+        ];
+
+        // --- 5. LOGICA MOTORE ---
+        let typingTimeouts = [];
+
+        $(document).ready(function() {
+            const flipSound = new Audio('flip.mp3'); 
+            const container = $('#flipbook');
+            const zoomWrapper = $('#zoom-wrapper'); 
+
+            // Generazione Pagine
+            for (let i = 1; i <= totPagine; i++) {
+                const pageNum = i;
+                const div = document.createElement('div');
+                div.className = 'page';
+                
+                // Background
+                const bgDiv = document.createElement('div');
+                bgDiv.className = 'page-bg';
+                bgDiv.style.backgroundImage = `url('${pageNum}.png')`;
+                div.appendChild(bgDiv);
+                
+                // Badge Capitolo Dinamico
+                const currentChapter = chapters.find(c => pageNum >= c.start && pageNum <= c.end);
+                if (currentChapter) {
+                    const badge = document.createElement('div');
+                    badge.className = 'chapter-badge';
+                    badge.innerText = currentChapter.title;
+                    badge.style.backgroundColor = currentChapter.color + "26"; // Trasparenza
+                    badge.style.border = `1px solid ${currentChapter.color}66`;
+                    badge.style.color = currentChapter.color;
+                    div.appendChild(badge);
+                }
+
+                // Numerazione
+                if (pageNum > 1 && pageNum < totPagine) {
+                    const pNumDiv = document.createElement('div');
+                    pNumDiv.className = 'page-number';
+                    pNumDiv.innerText = pageNum;
+                    pNumDiv.style[pageNum % 2 === 0 ? 'left' : 'right'] = '20px';
+                    div.appendChild(pNumDiv);
+                }
+
+                // Inserimento Hotspots
+                links.filter(x => x.pageIndex === pageNum).forEach(l => {
+                    const a = document.createElement('div');
+                    a.className = 'hotspot'; 
+                    a.style.top = l.top+'%'; a.style.left = l.left+'%'; 
+                    a.style.width = l.width+'%'; a.style.height = l.height+'%';
+                    a.onclick = () => container.turn('page', l.destPage);
+                    div.appendChild(a);
+                });
+
+                // Inserimento Box Testi
+                texts.filter(x => x.pageIndex === pageNum).forEach((txt, idx) => {
+                    const tDiv = document.createElement('div');
+                    tDiv.className = 'typewriter-box';
+                    tDiv.id = `typewriter-${pageNum}-${idx}`;
+                    tDiv.setAttribute('data-content', txt.content);
+                    tDiv.setAttribute('data-speed', txt.speed);
+                    tDiv.style.cssText = `top:${txt.top}%; left:${txt.left}%; width:${txt.width}%; font-size:${txt.fontSize}; font-weight:${txt.fontWeight}; color:${txt.color}; text-align:${txt.textAlign || 'left'}; text-shadow:${txt.textShadow || 'none'};`;
+                    div.appendChild(tDiv);
+                });
+
+                container.append(div);
+            }
+
+            // Inizializzazione Turn.js
+            container.turn({
+                width: 960, height: 680, autoCenter: true, duration: 1000,
+                when: {
+                    turning: () => { try { flipSound.currentTime = 0; flipSound.play(); } catch(e){} }
+                }
+            });
+
+            // Zoom Intelligente
+            function resizeFlipbook() {
+                const scale = Math.min(($(window).width() * 0.95) / 960, ($(window).height() * 0.95) / 680);
+                zoomWrapper.css('transform', `scale(${scale})`);
+            }
+
+            $(window).resize(resizeFlipbook).trigger('resize');
+            setTimeout(() => container.addClass('visible'), 100);
+
+            // Motore Scrittura
+            function typeWriter(id, text, speed) {
+                let i = 0;
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.innerHTML = '';
+                function type() {
+                    if (i < text.length) {
+                        el.innerHTML += text.charAt(i) === '\n' ? '<br>' : text.charAt(i);
+                        i++; typingTimeouts.push(setTimeout(type, speed));
+                    }
+                }
+                type();
+            }
+
+            container.bind("turned", function(e, page, view) {
+                typingTimeouts.forEach(clearTimeout);
+                $('.typewriter-box').html('');
+                view.forEach(pNum => {
+                    document.querySelectorAll(`[id^="typewriter-${pNum}-"]`).forEach(box => {
+                        typeWriter(box.id, box.getAttribute('data-content'), parseInt(box.getAttribute('data-speed')));
+                    });
+                });
+            });
+
+            // Controlli Tastiera
+            $(document).keydown(e => {
+                if (e.keyCode == 37) container.turn("previous");
+                else if (e.keyCode == 39) container.turn("next");
+            });
+        });
+    </script>
+</body>
+</html>
